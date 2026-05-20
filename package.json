@@ -1,0 +1,59 @@
+{
+  "name": "figma-local-context-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP server for reading .fig files, inspecting nodes, and exporting SVG/PNG assets without the Figma API.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "figma-local-context-mcp": "dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "server.json"
+  ],
+  "scripts": {
+    "build": "tsup --dts",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/bin.js --stdio",
+    "dev": "tsx src/bin.ts --stdio",
+    "inspect": "pnpx @modelcontextprotocol/inspector"
+  },
+  "engines": {
+    "node": ">=20.20.0"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "keywords": [
+    "figma",
+    "mcp",
+    "fig",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KwiTsukasa/figma-local-context-mcp.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "cleye": "^2.2.1",
+    "fzstd": "^0.1.1",
+    "kiwi-schema": "^0.5.0",
+    "uzip": "^0.20201231.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "@types/uzip": "^0.20201231.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.3",
+    "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@resvg/resvg-js",
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-16/server.schema.json",
+  "name": "figma-local-context-mcp",
+  "description": "Read local .fig files, inspect node data, and export selected nodes to SVG/PNG.",
+  "status": "active",
+  "repository": {
+    "url": "file://.",
+    "source": "local"
+  },
+  "packages": [
+    {
+      "registry_type": "npm",
+      "identifier": "figma-local-context-mcp",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
