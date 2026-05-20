@@ -12,7 +12,7 @@
 - `list_fig_nodes`：按名称、类型或 node-id 搜索节点。
 - `get_design_tokens`：从全文件或指定节点子树中推导颜色、渐变、阴影、描边 token。
 - `inspect_fig_file`：读取本地 `.fig`，返回节点数量、类型统计和节点概览。
-- `get_fig_node`：按节点名、`2625:12945`、`2625-12945`、`node-id=2625-12945` 或完整 Figma 链接查找节点，并返回简化上下文。
+- `get_fig_node`：按节点名、`1234:5678`、`1234-5678`、`node-id=1234-5678` 或完整 Figma 链接查找节点，并返回简化上下文。
 - `export_fig_node`：把指定节点导出为 SVG 或 PNG，PNG 支持倍率。
 
 ## 示例参数
@@ -21,8 +21,8 @@
 
 ```json
 {
-  "filePath": "D:\\MyFiles\\Download\\兴泰安全生产预计平台-朱梓鑫.fig",
-  "nodeQuery": "node-id=2625-12945",
+  "filePath": "C:\\Users\\you\\Designs\\sample.fig",
+  "nodeQuery": "node-id=1234-5678",
   "depth": 2,
   "includeTokens": true,
   "includeCodeHints": true
@@ -33,8 +33,8 @@
 
 ```json
 {
-  "filePath": "D:\\MyFiles\\Download\\兴泰安全生产预计平台-朱梓鑫.fig",
-  "nodeQuery": "2625-12945",
+  "filePath": "C:\\Users\\you\\Designs\\sample.fig",
+  "nodeQuery": "1234-5678",
   "depth": 2
 }
 ```
@@ -43,8 +43,8 @@
 
 ```json
 {
-  "filePath": "D:\\MyFiles\\Download\\兴泰安全生产预计平台-朱梓鑫.fig",
-  "query": "Group 1321315187",
+  "filePath": "C:\\Users\\you\\Designs\\sample.fig",
+  "query": "Primary Card",
   "limit": 20
 }
 ```
@@ -53,9 +53,9 @@
 
 ```json
 {
-  "filePath": "D:\\MyFiles\\Download\\兴泰安全生产预计平台-朱梓鑫.fig",
-  "nodeQueries": ["2625-12945", "Group 1321315187"],
-  "outputDir": "D:\\MyFiles\\Download\\fig-export-debug\\assets",
+  "filePath": "C:\\Users\\you\\Designs\\sample.fig",
+  "nodeQueries": ["1234-5678", "Primary Card"],
+  "outputDir": "C:\\Users\\you\\Exports\\figma-local-context\\assets",
   "format": "png",
   "scale": 2
 }
@@ -65,8 +65,8 @@
 
 ```json
 {
-  "filePath": "D:\\MyFiles\\Download\\兴泰安全生产预计平台-朱梓鑫.fig",
-  "nodeQuery": "2625-12945"
+  "filePath": "C:\\Users\\you\\Designs\\sample.fig",
+  "nodeQuery": "1234-5678"
 }
 ```
 
@@ -74,7 +74,7 @@
 
 ```json
 {
-  "filePath": "D:\\MyFiles\\Download\\兴泰安全生产预计平台-朱梓鑫.fig",
+  "filePath": "C:\\Users\\you\\Designs\\sample.fig",
   "maxNodes": 20
 }
 ```
@@ -83,8 +83,8 @@
 
 ```json
 {
-  "filePath": "D:\\MyFiles\\Download\\兴泰安全生产预计平台-朱梓鑫.fig",
-  "nodeQuery": "node-id=2625-12945",
+  "filePath": "C:\\Users\\you\\Designs\\sample.fig",
+  "nodeQuery": "node-id=1234-5678",
   "depth": 1
 }
 ```
@@ -93,9 +93,9 @@
 
 ```json
 {
-  "filePath": "D:\\MyFiles\\Download\\兴泰安全生产预计平台-朱梓鑫.fig",
-  "nodeQuery": "2625-12945",
-  "outputPath": "D:\\MyFiles\\Download\\fig-export-debug\\mcp-export-node.png",
+  "filePath": "C:\\Users\\you\\Designs\\sample.fig",
+  "nodeQuery": "1234-5678",
+  "outputPath": "C:\\Users\\you\\Exports\\figma-local-context\\sample-node.png",
   "format": "png",
   "scale": 2
 }
@@ -122,7 +122,7 @@ MCP 客户端配置示例：
   "mcpServers": {
     "Figma Local Context": {
       "command": "cmd",
-      "args": ["/c", "pnpm", "--dir", "D:\\MyFiles\\Codes\\Node\\figma-local-context-mcp", "dev"]
+      "args": ["/c", "pnpm", "--dir", "C:\\path\\to\\figma-local-context-mcp", "dev"]
     }
   }
 }
@@ -135,7 +135,7 @@ MCP 客户端配置示例：
   "mcpServers": {
     "Figma Local Context": {
       "command": "cmd",
-      "args": ["/c", "node", "D:\\MyFiles\\Codes\\Node\\figma-local-context-mcp\\dist\\bin.js", "--stdio"]
+      "args": ["/c", "node", "C:\\path\\to\\figma-local-context-mcp\\dist\\bin.js", "--stdio"]
     }
   }
 }
