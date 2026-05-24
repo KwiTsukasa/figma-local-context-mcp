@@ -32,6 +32,47 @@ export type FigPaint = {
   visible?: boolean
   stops?: Array<{ color: FigColor; position: number }>
   transform?: FigmaMatrix
+  image?: { hash?: Uint8Array | number[] | string; name?: string }
+  imageThumbnail?: { hash?: Uint8Array | number[] | string; name?: string }
+  imageScaleMode?: "FILL" | "FIT" | "STRETCH" | "TILE" | string
+  originalImageWidth?: number
+  originalImageHeight?: number
+}
+
+export type FigTextGlyph = {
+  commandsBlob: number
+  position?: { x: number; y: number }
+  fontSize?: number
+  firstCharacter?: number
+  advance?: number
+  rotation?: number
+}
+
+export type FigTextStyleOverride = {
+  styleID?: number
+  fillPaints?: FigPaint[]
+  fontSize?: number
+}
+
+export type FigTextData = {
+  characters?: string
+  characterStyleIDs?: number[]
+  styleOverrideTable?: FigTextStyleOverride[]
+  lines?: unknown[]
+}
+
+export type FigDerivedTextData = {
+  glyphs?: FigTextGlyph[]
+  layoutSize?: { x: number; y: number }
+  baselines?: Array<{
+    position?: { x: number; y: number }
+    width?: number
+    lineY?: number
+    lineHeight?: number
+    lineAscent?: number
+    firstCharacter?: number
+    endCharacter?: number
+  }>
 }
 
 export type FigGeometry = {
@@ -62,12 +103,19 @@ export type FigNode = {
   strokeWeight?: number
   strokeAlign?: "CENTER" | "INSIDE" | "OUTSIDE"
   dashPattern?: number[]
+  frameMaskDisabled?: boolean
+  mask?: boolean
+  maskType?: "OUTLINE" | "ALPHA" | string
+  exportSettings?: Array<{ useAbsoluteBounds?: boolean; contentsOnly?: boolean; [key: string]: unknown }>
   arcData?: FigArcData
   fillPaints?: FigPaint[]
   strokePaints?: FigPaint[]
   fillGeometry?: FigGeometry[]
   strokeGeometry?: FigGeometry[]
   effects?: FigEffect[]
+  fontSize?: number
+  textData?: FigTextData
+  derivedTextData?: FigDerivedTextData
 }
 
 export type FigJson = {

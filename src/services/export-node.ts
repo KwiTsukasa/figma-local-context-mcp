@@ -3,6 +3,7 @@ import path from "node:path"
 import zlib from "node:zlib"
 import { Resvg } from "@resvg/resvg-js"
 import { loadFigFile } from "./fig-file.js"
+import { loadFigImageAssets } from "./fig-images.js"
 import { renderNodeToSvg, type FigmaLikeRasterHint } from "./fig-node-svg.js"
 import { keyForGuid, sanitizeFilePart } from "../utils/node-id.js"
 
@@ -61,13 +62,15 @@ export type ExportNodeResult = {
 
 export function exportFigNode(options: ExportNodeOptions): ExportNodeResult {
   const figJson = loadFigFile(options.filePath)
+  const imageAssets = loadFigImageAssets(options.filePath)
   const pngRenderer = options.pngRenderer ?? "figma-like"
   const useFigmaLikePng = options.format === "png" && pngRenderer === "figma-like"
   const rendered = renderNodeToSvg(figJson, {
     nodeQuery: options.nodeQuery,
     scale: options.scale,
     background: options.background,
-    pngFigmaLike: useFigmaLikePng
+    pngFigmaLike: useFigmaLikePng,
+    imageAssets
   })
   const outputPath = path.resolve(options.outputPath ?? defaultOutputPath(options))
   const node = {

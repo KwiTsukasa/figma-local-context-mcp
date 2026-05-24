@@ -7,8 +7,10 @@ import type {
   FigJson,
   FigNode,
   FigPaint,
+  FigTextGlyph,
   FigmaMatrix
 } from "./fig-types.js"
+import type { FigImageAssets } from "./fig-images.js"
 import { keyForGuid, normalizeNodeId } from "../utils/node-id.js"
 
 type SvgMatrix = [number, number, number, number, number, number]
@@ -23,6 +25,7 @@ type RenderContext = {
   childrenByParent: Map<string, FigNode[]>
   defs: string[]
   rasterHints: FigmaLikeRasterHint[]
+  imageAssets: FigImageAssets
   bounds: Bounds | null
   effectBounds: Bounds | null
   idSeed: number
@@ -49,6 +52,7 @@ export type RenderOptions = {
   scale?: number
   background?: string
   pngFigmaLike?: boolean
+  imageAssets?: FigImageAssets
 }
 
 export type RenderedSvg = {
@@ -63,6 +67,7 @@ export type RenderedSvg = {
 const IDENTITY: SvgMatrix = [1, 0, 0, 1, 0, 0]
 const COMMAND_MOVE = 1
 const COMMAND_LINE = 2
+const COMMAND_QUADRATIC = 3
 const COMMAND_CUBIC = 4
 const COMMAND_CLOSE = 0
 
@@ -74,6 +79,7 @@ export function renderNodeToSvg(figJson: FigJson, options: RenderOptions): Rende
     childrenByParent,
     defs: [],
     rasterHints: [],
+    imageAssets: options.imageAssets ?? new Map(),
     bounds: null,
     effectBounds: null,
     idSeed: 0,
@@ -163,9 +169,10 @@ function renderNodeSubtree(
     node.type !== "BOOLEAN_OPERATION" || !(node.fillGeometry?.length || node.strokeGeometry?.length)
   const nodeContent = [
     ...renderGeometry(context, node, node.fillGeometry, node.fillPaints, matrix),
+    renderTextNode(context, node, matrix),
     collectFigmaLikeEllipseInnerShadowHint(context, node, matrix),
     ...renderStrokeGeometry(context, node, matrix),
-    ...(shouldRenderChildren ? getSortedChildren(context, node).map((child) => renderNodeSubtree(context, child, matrix)) : [])
+    ...(shouldRenderChildren ? renderChildNodes(context, node, matrix) : [])
   ].join("")
 
   if (!nodeContent) return ""
@@ -177,12 +184,170 @@ function renderNodeSubtree(
   return `<g${opacity}${filter}>${nodeContent}</g>`
 }
 
+function renderChildNodes(context: RenderContext, node: FigNode, matrix: SvgMatrix): string[] {
+  const output: string[] = []
+  let activeClipId: string | null = null
+
+  for (const child of getSortedChildren(context, node)) {
+    if (child.visible === false) continue
+
+    if (child.mask) {
+      activeClipId = createMaskClipPath(context, child, matrix)
+      continue
+    }
+
+    const rendered = renderNodeSubtree(context, child, matrix)
+    if (!rendered) continue
+
+    output.push(activeClipId ? `<g clip-path="url(#${activeClipId})">${rendered}</g>` : rendered)
+  }
+
+  return output
+}
+
+function createMaskClipPath(context: RenderContext, node: FigNode, parentMatrix: SvgMatrix): string | null {
+  const content = renderClipPathNode(context, node, parentMatrix)
+  if (!content) return null
+
+  const id = nextId(context, "clip")
+  context.defs.push(`<clipPath id="${id}" clipPathUnits="userSpaceOnUse">${content}</clipPath>`)
+  return id
+}
+
+function renderClipPathNode(context: RenderContext, node: FigNode, parentMatrix: SvgMatrix): string {
+  if (node.visible === false) return ""
+
+  const matrix = multiply(parentMatrix, toSvgMatrix(node.transform))
+  return [
+    ...renderGeometryClipPaths(context, node.fillGeometry, matrix),
+    ...renderGeometryClipPaths(context, node.strokeGeometry, matrix),
+    ...renderTextClipPaths(context, node, matrix),
+    ...getSortedChildren(context, node).map((child) => renderClipPathNode(context, child, matrix))
+  ].join("")
+}
+
+function renderGeometryClipPaths(
+  context: RenderContext,
+  geometries: FigGeometry[] | undefined,
+  matrix: SvgMatrix
+): string[] {
+  if (!geometries?.length) return []
+
+  return geometries.flatMap((geometry) => {
+    const parsed = tryParsePathBlob(context.figJson, geometry.commandsBlob)
+    if (!parsed || !isFiniteBounds(parsed.bounds) || !parsed.d) return []
+
+    const clipRule = geometry.windingRule === "ODD" ? ` clip-rule="evenodd"` : ""
+    return `<path d="${transformPathData(parsed.d, matrix)}"${clipRule}/>`
+  })
+}
+
+function renderTextClipPaths(context: RenderContext, node: FigNode, matrix: SvgMatrix): string[] {
+  if (node.type !== "TEXT") return []
+
+  return (
+    node.derivedTextData?.glyphs?.flatMap((glyph) => {
+      const parsed = parsePathBlob(context.figJson, glyph.commandsBlob)
+      if (!isFiniteBounds(parsed.bounds) || !parsed.d) return []
+
+      return `<path d="${transformPathData(parsed.d, getGlyphMatrix(glyph, matrix))}"/>`
+    }) ?? []
+  )
+}
+
+function renderTextNode(context: RenderContext, node: FigNode, matrix: SvgMatrix): string {
+  if (node.type !== "TEXT") return ""
+
+  const glyphs = node.derivedTextData?.glyphs
+  const textBounds = getTextLocalBounds(node)
+  if (!glyphs?.length || !textBounds) return ""
+
+  const groups = new Map<string, { paints: FigPaint[]; paths: string[] }>()
+  includeBounds(context, transformBounds(matrix, textBounds))
+
+  for (const glyph of glyphs) {
+    const parsed = parsePathBlob(context.figJson, glyph.commandsBlob)
+    if (!isFiniteBounds(parsed.bounds) || !parsed.d) continue
+
+    const paints = getTextGlyphPaints(node, glyph)
+    if (!paints.length) continue
+
+    const key = JSON.stringify(paints)
+    const group = groups.get(key) ?? { paints, paths: [] }
+    group.paths.push(transformPathData(parsed.d, getGlyphMatrix(glyph, matrix)))
+    groups.set(key, group)
+  }
+
+  return [...groups.values()]
+    .flatMap((group) => renderTextPaintGroup(context, node, textBounds, group.paints, matrix, group.paths))
+    .join("")
+}
+
+function renderTextPaintGroup(
+  context: RenderContext,
+  node: FigNode,
+  textBounds: Bounds,
+  paints: FigPaint[],
+  matrix: SvgMatrix,
+  paths: string[]
+): string[] {
+  if (!paths.length) return []
+
+  const d = paths.join(" ")
+  return paints
+    .filter((paint) => paint.visible !== false)
+    .map((paint) => {
+      if (paint.type === "IMAGE") return ""
+
+      const fill = paintToSvgFill(context, node, textBounds, paint, matrix)
+      const opacity = paintOpacityAttribute("fill", paint)
+      return `<path d="${d}" fill="${fill}"${opacity}/>`
+    })
+}
+
+function getTextGlyphPaints(node: FigNode, glyph: FigTextGlyph): FigPaint[] {
+  const characterIndex = glyph.firstCharacter ?? 0
+  const styleId = node.textData?.characterStyleIDs?.[characterIndex]
+  const override = node.textData?.styleOverrideTable?.find((style) => style.styleID === styleId)
+
+  return override?.fillPaints ?? node.fillPaints ?? []
+}
+
+function getTextLocalBounds(node: FigNode): Bounds | null {
+  const size = node.derivedTextData?.layoutSize ?? node.size
+  if (!size || size.x <= 0 || size.y <= 0) return null
+
+  return {
+    minX: 0,
+    minY: 0,
+    maxX: size.x,
+    maxY: size.y
+  }
+}
+
+function getGlyphMatrix(glyph: FigTextGlyph, textMatrix: SvgMatrix): SvgMatrix {
+  const position = glyph.position ?? { x: 0, y: 0 }
+  const fontSize = glyph.fontSize ?? 1
+  const rotation = glyph.rotation ?? 0
+
+  // Glyph blobs are normalized font outlines with positive Y going upward from
+  // the baseline. SVG local space is Y-down, so text rendering needs a vertical
+  // flip around Figma's stored glyph baseline.
+  const scale: SvgMatrix = [fontSize, 0, 0, -fontSize, 0, 0]
+  const glyphLocal =
+    rotation === 0
+      ? ([fontSize, 0, 0, -fontSize, position.x, position.y] as SvgMatrix)
+      : multiply([Math.cos(rotation), Math.sin(rotation), -Math.sin(rotation), Math.cos(rotation), position.x, position.y], scale)
+
+  return multiply(textMatrix, glyphLocal)
+}
+
 function renderStrokeGeometry(context: RenderContext, node: FigNode, matrix: SvgMatrix): string[] {
   const outsideEllipseStroke = renderOutsideEllipseStroke(context, node, matrix)
   if (outsideEllipseStroke) return outsideEllipseStroke
 
   const pathStroke = renderPathStroke(context, node, matrix)
-  if (pathStroke) return pathStroke
+  if (pathStroke?.length) return pathStroke
 
   return renderGeometry(context, node, node.strokeGeometry, node.strokePaints, matrix)
 }
@@ -196,7 +361,9 @@ function renderPathStroke(context: RenderContext, node: FigNode, matrix: SvgMatr
   if (hasGradientStroke && !shouldRenderGradientStrokeAsPath(node)) return null
 
   return node.fillGeometry.flatMap((geometry) => {
-    const parsed = parsePathBlob(context.figJson, geometry.commandsBlob)
+    const parsed = tryParsePathBlob(context.figJson, geometry.commandsBlob)
+    if (!parsed || !isFiniteBounds(parsed.bounds) || !parsed.d) return []
+
     const expandedBounds = expandBounds(parsed.bounds, strokeWeight / 2)
     includeBounds(context, transformBounds(matrix, expandedBounds))
     const strokeMatrix = multiply(matrix, getStrokeAlignmentMatrix(parsed.bounds, strokeWeight, node.strokeAlign))
@@ -215,6 +382,13 @@ function renderPathStroke(context: RenderContext, node: FigNode, matrix: SvgMatr
         )}"${opacity}${dashArray}/>`
       })
   })
+}
+
+function tryParsePathBlob(figJson: FigJson, blobIndex: number): ParsedPath | null {
+  const blob = figJson.blobs?.[blobIndex]
+  if (!blob) return null
+
+  return parsePathBlob(figJson, blobIndex)
 }
 
 function shouldRenderGradientStrokeAsPath(node: FigNode): boolean {
@@ -265,6 +439,9 @@ function getStraightSegments(d: string): Array<{ from: { x: number; y: number };
       const next = readPoint()
       segments.push({ from: current, to: next })
       current = next
+    } else if (command === "Q") {
+      index += 2
+      current = readPoint()
     } else if (command === "C") {
       index += 4
       current = readPoint()
@@ -412,6 +589,8 @@ function renderGeometry(
 
   return geometries.flatMap((geometry) => {
     const parsed = parsePathBlob(context.figJson, geometry.commandsBlob)
+    if (!isFiniteBounds(parsed.bounds) || !parsed.d) return []
+
     const transformedBounds = transformBounds(matrix, parsed.bounds)
     includeBounds(context, transformedBounds)
     const fillRule = geometry.windingRule === "ODD" ? ` fill-rule="evenodd"` : ""
@@ -419,12 +598,41 @@ function renderGeometry(
     return paints
       .filter((paint) => paint.visible !== false)
       .map((paint) => {
+        if (paint.type === "IMAGE") {
+          return renderImageFill(context, node, parsed, paint, matrix, fillRule)
+        }
+
         const fill = paintToSvgFill(context, node, parsed.bounds, paint, matrix)
         const opacity = paintOpacityAttribute("fill", paint)
 
         return `<path d="${transformPathData(parsed.d, matrix)}" fill="${fill}"${fillRule}${opacity}/>`
       })
   })
+}
+
+function renderImageFill(
+  context: RenderContext,
+  node: FigNode,
+  parsed: ParsedPath,
+  paint: FigPaint,
+  matrix: SvgMatrix,
+  fillRule: string
+): string {
+  const href = getImageDataUrl(context, paint)
+  const clipId = nextId(context, "clip")
+  const clipRule = fillRule ? fillRule.replace(" fill-rule=", " clip-rule=") : ""
+  const transformedPath = transformPathData(parsed.d, matrix)
+  const imageMatrix = getImagePaintMatrix(node, parsed.bounds, paint, matrix)
+  const opacity = imageOpacityAttribute(paint)
+
+  context.defs.push(`<clipPath id="${clipId}"><path d="${transformedPath}"${clipRule}/></clipPath>`)
+
+  // Figma stores image crop/fill as a normalized transform on the paint. Keep
+  // the clip on a wrapper <g>; resvg can drop the bitmap when clip-path is put
+  // directly on a transformed unit-sized <image>.
+  return `<g clip-path="url(#${clipId})"><image href="${href}" width="1" height="1" preserveAspectRatio="none" transform="matrix(${imageMatrix
+    .map(format)
+    .join(" ")})"${opacity}/></g>`
 }
 
 function parsePathBlob(figJson: FigJson, blobIndex: number): ParsedPath {
@@ -437,6 +645,7 @@ function parsePathBlob(figJson: FigJson, blobIndex: number): ParsedPath {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   let offset = 0
   let d = ""
+  let hasOpenSubpath = false
   const bounds = createEmptyBounds()
 
   const readFloat = () => {
@@ -459,12 +668,18 @@ function parsePathBlob(figJson: FigJson, blobIndex: number): ParsedPath {
 
     if (command === COMMAND_MOVE) {
       d += `M ${readPoint()} `
+      hasOpenSubpath = true
     } else if (command === COMMAND_LINE) {
       d += `L ${readPoint()} `
+    } else if (command === COMMAND_QUADRATIC) {
+      d += `Q ${readPoint()} ${readPoint()} `
     } else if (command === COMMAND_CUBIC) {
       d += `C ${readPoint()} ${readPoint()} ${readPoint()} `
     } else if (command === COMMAND_CLOSE) {
-      d += "Z "
+      if (hasOpenSubpath) {
+        d += "Z "
+        hasOpenSubpath = false
+      }
     } else {
       throw new Error(`几何数据 blob ${blobIndex} 中存在不支持的向量命令：${command}`)
     }
@@ -476,7 +691,7 @@ function parsePathBlob(figJson: FigJson, blobIndex: number): ParsedPath {
 function transformPathData(d: string, matrix: SvgMatrix): string {
   if (matrix === IDENTITY) return d
 
-  const tokens = d.match(/[MLCZ]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? []
+  const tokens = d.match(/[MLQCZ]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? []
   const output: string[] = []
   let index = 0
 
@@ -488,6 +703,8 @@ function transformPathData(d: string, matrix: SvgMatrix): string {
     const command = tokens[index++]
     if (command === "M" || command === "L") {
       output.push(`${command} ${writePoint(readPoint())}`)
+    } else if (command === "Q") {
+      output.push(`Q ${writePoint(readPoint())} ${writePoint(readPoint())}`)
     } else if (command === "C") {
       output.push(`C ${writePoint(readPoint())} ${writePoint(readPoint())} ${writePoint(readPoint())}`)
     } else if (command === "Z") {
@@ -529,6 +746,26 @@ function paintToSvgFill(
     return `url(#${id})`
   }
 
+  if (paint.type === "GRADIENT_RADIAL") {
+    const id = nextId(context, "gradient")
+    const gradientMatrix = getRadialGradientMatrix(node, pathBounds, paint, matrix)
+    const stops = paint.stops
+      ?.map(
+        (stop) =>
+          `<stop offset="${format(stop.position * 100)}%" stop-color="${colorToCss(stop.color)}" stop-opacity="${format(
+            stop.color.a
+          )}"/>`
+      )
+      .join("")
+
+    context.defs.push(
+      `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="matrix(${gradientMatrix
+        .map(format)
+        .join(" ")})">${stops ?? ""}</radialGradient>`
+    )
+    return `url(#${id})`
+  }
+
   throw new Error(`不支持的填充类型：${paint.type}`)
 }
 
@@ -552,6 +789,73 @@ function getLinearGradientLine(node: FigNode, pathBounds: Bounds, paint: FigPain
     x2: transformedEnd.x,
     y2: transformedEnd.y
   }
+}
+
+function getRadialGradientMatrix(node: FigNode, pathBounds: Bounds, paint: FigPaint, matrix: SvgMatrix): SvgMatrix {
+  const width = node.size?.x || pathBounds.maxX - pathBounds.minX
+  const height = node.size?.y || pathBounds.maxY - pathBounds.minY
+  const originX = pathBounds.minX < 0 ? pathBounds.minX : 0
+  const originY = pathBounds.minY < 0 ? pathBounds.minY : 0
+  const inverse = invert(toSvgMatrix(paint.transform))
+  const center = applyToPoint(inverse, 0, 0)
+  const xEdge = applyToPoint(inverse, 1, 0)
+  const yEdge = applyToPoint(inverse, 0, 1)
+  const localMatrix: SvgMatrix = [
+    (xEdge.x - center.x) * width,
+    (xEdge.y - center.y) * height,
+    (yEdge.x - center.x) * width,
+    (yEdge.y - center.y) * height,
+    originX + center.x * width,
+    originY + center.y * height
+  ]
+
+  // Radial gradients use the same normalized paint transform as linear
+  // gradients, but SVG needs that unit circle projected into user space.
+  return multiply(matrix, localMatrix)
+}
+
+function getImageDataUrl(context: RenderContext, paint: FigPaint): string {
+  const candidates = [hashToHex(paint.image?.hash), hashToHex(paint.imageThumbnail?.hash)].filter(Boolean) as string[]
+  for (const hash of candidates) {
+    const asset = context.imageAssets.get(hash)
+    if (asset) return asset
+  }
+
+  throw new Error(`不支持的 IMAGE 填充：找不到本地图片资源 ${candidates.join(" 或 ") || "unknown"}`)
+}
+
+function getImagePaintMatrix(node: FigNode, pathBounds: Bounds, paint: FigPaint, matrix: SvgMatrix): SvgMatrix {
+  const width = node.size?.x || pathBounds.maxX - pathBounds.minX
+  const height = node.size?.y || pathBounds.maxY - pathBounds.minY
+  const originX = pathBounds.minX < 0 ? pathBounds.minX : 0
+  const originY = pathBounds.minY < 0 ? pathBounds.minY : 0
+  const transform = paint.transform ?? { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
+  const imageMatrix: SvgMatrix = [
+    transform.m00 * width,
+    transform.m10 * height,
+    transform.m01 * width,
+    transform.m11 * height,
+    originX + transform.m02 * width,
+    originY + transform.m12 * height
+  ]
+
+  return multiply(matrix, imageMatrix)
+}
+
+function hashToHex(hash: Uint8Array | number[] | string | Record<string, number> | undefined): string | null {
+  if (!hash) return null
+  if (typeof hash === "string") return hash.toLowerCase()
+
+  const values =
+    hash instanceof Uint8Array
+      ? [...hash]
+      : Array.isArray(hash)
+        ? hash
+        : Object.keys(hash)
+            .sort((left, right) => Number(left) - Number(right))
+            .map((key) => (hash as Record<string, number>)[key])
+
+  return values.map((value) => value.toString(16).padStart(2, "0")).join("")
 }
 
 function createFilter(context: RenderContext, effects: FigEffect[] | undefined, bounds: Bounds): string | null {
@@ -754,10 +1058,16 @@ function getRootExportBounds(target: FigNode, renderedBounds: Bounds | null, eff
 
     // Native exports keep the node's nominal box, then extend the bitmap when
     // visible filters such as foreground blur reach outside that box.
+    if (shouldUseNominalRootBounds(target)) return targetBounds
+
     return effectBounds ? unionBounds(targetBounds, effectBounds) : targetBounds
   }
 
   return renderedBounds ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 }
+}
+
+function shouldUseNominalRootBounds(target: FigNode): boolean {
+  return Boolean(target.exportSettings?.some((setting) => setting.useAbsoluteBounds === false))
 }
 
 function getFigmaPixelSize(size: number, scale: number): number {
@@ -791,7 +1101,12 @@ function getGeometryLocalBounds(context: RenderContext, node: FigNode): Bounds |
   let bounds: Bounds | null = null
 
   for (const geometry of geometries) {
-    const parsed = parsePathBlob(context.figJson, geometry.commandsBlob)
+    // Some imported component assets keep stale fillGeometry blob references
+    // for invisible fills. Bounds should come from any remaining valid geometry
+    // instead of failing before visible strokeGeometry can render.
+    const parsed = tryParsePathBlob(context.figJson, geometry.commandsBlob)
+    if (!parsed || !isFiniteBounds(parsed.bounds)) continue
+
     bounds = bounds ? unionBounds(bounds, parsed.bounds) : { ...parsed.bounds }
   }
 
@@ -873,6 +1188,17 @@ function transformBounds(matrix: SvgMatrix, bounds: Bounds): Bounds {
   ]
 
   return points.reduce((next, point) => includePoint(next, point.x, point.y), createEmptyBounds())
+}
+
+function isFiniteBounds(bounds: Bounds): boolean {
+  return (
+    Number.isFinite(bounds.minX) &&
+    Number.isFinite(bounds.minY) &&
+    Number.isFinite(bounds.maxX) &&
+    Number.isFinite(bounds.maxY) &&
+    bounds.maxX >= bounds.minX &&
+    bounds.maxY >= bounds.minY
+  )
 }
 
 function expandBounds(bounds: Bounds, amount: number): Bounds {
@@ -991,6 +1317,11 @@ function colorMatrixValues(color?: FigColor): string {
 function paintOpacityAttribute(kind: "fill" | "stroke", paint: FigPaint): string {
   const opacity = (paint.opacity ?? 1) * (paint.type === "SOLID" ? paint.color?.a ?? 1 : 1)
   return opacity !== 1 ? ` ${kind}-opacity="${format(opacity)}"` : ""
+}
+
+function imageOpacityAttribute(paint: FigPaint): string {
+  const opacity = paint.opacity ?? 1
+  return opacity !== 1 ? ` opacity="${format(opacity)}"` : ""
 }
 
 function strokeDashArrayAttribute(node: FigNode): string {

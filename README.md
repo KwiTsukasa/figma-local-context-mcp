@@ -108,6 +108,8 @@
 - `local-figma-like-resvg`：默认 PNG 管线。先生成带 Figma-like 滤镜补偿的本地 SVG，再用 `@resvg/resvg-js` 转 PNG。
 - `local-svg-resvg`：普通预览 PNG 管线。先生成本地 SVG，再用 `@resvg/resvg-js` 转 PNG。Figma 在线端 PNG 使用自身渲染管线，不能假定它是在线 SVG 再转 PNG。
 
+当前本地 SVG/PNG 管线支持 `.fig` 外层 zip 中的 `images/<hash>` 图片资源，会把 `IMAGE` 填充按真实图片、paint transform 和矢量路径裁切导出；如果本地文件缺少对应图片资源，会明确报出缺失的 IMAGE hash。线性/径向渐变、虚线描边和部分滤镜也会转换为 SVG 近似表达。
+
 导出结果还会包含 `exportCapabilities`：
 
 - `localSvg.supported: true`：支持从本地 `.fig` 解码生成 SVG。
