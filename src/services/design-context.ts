@@ -1,6 +1,6 @@
 import path from "node:path"
 import type { FigColor, FigJson, FigNode, FigPaint } from "./fig-types.js"
-import { exportFigNode, type ExportNodeResult } from "./export-node.js"
+import { exportFigNode, type ExportNodeResult, type PngRenderer } from "./export-node.js"
 import { getChildrenByParent, findTargetNode } from "./fig-node-svg.js"
 import { getRootNode, loadFigFile, serializeNode, summarizeNode } from "./fig-file.js"
 import { keyForGuid, sanitizeFilePart } from "../utils/node-id.js"
@@ -33,6 +33,7 @@ export type ExportAssetsOptions = {
   format: "svg" | "png"
   scale: number
   background?: string
+  pngRenderer?: PngRenderer
 }
 
 export function listFigNodes(filePath: string, options: NodeListOptions) {
@@ -102,7 +103,8 @@ export function exportAssets(options: ExportAssetsOptions) {
         outputPath: path.join(options.outputDir, fileName),
         format: options.format,
         scale: options.scale,
-        background: options.background
+        background: options.background,
+        pngRenderer: options.pngRenderer
       })
     )
   }
@@ -159,7 +161,9 @@ function buildCodeHints(node: FigNode, childrenByParent: Map<string, FigNode[]>,
     },
     exportHint:
       node.type === "VECTOR" || node.type === "ELLIPSE" || node.type === "FRAME"
-        ? `Use export_fig_node or export_assets with nodeQuery "${keyForGuid(node.guid)}" for exact SVG/PNG.`
+        ? `Use export_fig_node or export_assets with nodeQuery "${keyForGuid(
+            node.guid
+          )}". SVG is structural local output; PNG is local SVG rasterization, not Figma native PNG export.`
         : undefined
   }
 

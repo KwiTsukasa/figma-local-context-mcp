@@ -13,7 +13,8 @@ import { getFigNodeContext, inspectFigFile } from "../services/fig-file.js"
 const serverInfo = {
   name: "Figma Local Context MCP",
   version: process.env.NPM_PACKAGE_VERSION ?? "0.1.0",
-  description: "Read local .fig files, inspect node context, and export selected nodes without Figma API."
+  description:
+    "Read local .fig files, inspect node context, export local SVG, and render Figma-like PNGs without Figma API/native renderer."
 }
 
 const inspectParams = z.object({
@@ -37,9 +38,13 @@ const exportNodeParams = z.object({
     .min(1)
     .describe("节点名称、2625:12945、2625-12945、node-id=2625-12945 或完整 Figma 链接。"),
   outputPath: z.string().min(1).optional().describe("输出文件路径；不传时写到当前工作目录。"),
-  format: z.enum(["svg", "png"]).default("png").describe("导出格式。"),
-  scale: z.number().positive().max(10).default(2).describe("导出倍率，PNG 常用 1/2/3/4。"),
-  background: z.string().optional().describe("可选背景色，例如 #ffffff。")
+  format: z.enum(["svg", "png"]).default("png").describe("导出格式；png 默认使用本地 figma-like 渲染。"),
+  scale: z.number().positive().max(10).default(2).describe("导出倍率，PNG 预览常用 1/2/3/4。"),
+  background: z.string().optional().describe("可选背景色，例如 #ffffff。"),
+  pngRenderer: z
+    .enum(["figma-like", "local-preview"])
+    .default("figma-like")
+    .describe("PNG 渲染器：figma-like 会增强滤镜/内阴影以接近 Figma PNG；local-preview 是普通 SVG 栅格化。")
 })
 
 const listNodesParams = z.object({
@@ -78,9 +83,13 @@ const exportAssetsParams = z.object({
     .max(100)
     .describe("要导出的节点名或 node-id 列表。"),
   outputDir: z.string().min(1).describe("资源输出目录。"),
-  format: z.enum(["svg", "png"]).default("png").describe("导出格式。"),
-  scale: z.number().positive().max(10).default(2).describe("导出倍率，PNG 常用 1/2/3/4。"),
-  background: z.string().optional().describe("可选背景色，例如 #ffffff。")
+  format: z.enum(["svg", "png"]).default("png").describe("导出格式；png 默认使用本地 figma-like 渲染。"),
+  scale: z.number().positive().max(10).default(2).describe("导出倍率，PNG 预览常用 1/2/3/4。"),
+  background: z.string().optional().describe("可选背景色，例如 #ffffff。"),
+  pngRenderer: z
+    .enum(["figma-like", "local-preview"])
+    .default("figma-like")
+    .describe("PNG 渲染器：figma-like 会增强滤镜/内阴影以接近 Figma PNG；local-preview 是普通 SVG 栅格化。")
 })
 
 const designTokensParams = z.object({
@@ -161,7 +170,7 @@ export function createServer(): McpServer {
     "export_assets",
     {
       title: "Export design assets",
-      description: "批量导出本地 .fig/.fig.json 中的多个节点为 SVG 或 PNG。",
+      description: "批量导出本地 .fig/.fig.json 中的多个节点为 SVG 或本地 figma-like PNG。",
       inputSchema: exportAssetsParams,
       annotations: { readOnlyHint: false, openWorldHint: true }
     },
@@ -173,7 +182,8 @@ export function createServer(): McpServer {
           outputDir: params.outputDir,
           format: params.format,
           scale: params.scale,
-          background: params.background
+          background: params.background,
+          pngRenderer: params.pngRenderer
         })
       )
   )
@@ -215,7 +225,7 @@ export function createServer(): McpServer {
     "export_fig_node",
     {
       title: "Export local Figma node",
-      description: "把本地 .fig/.fig.json 中的指定节点导出为 SVG 或 PNG。",
+      description: "把本地 .fig/.fig.json 中的指定节点导出为 SVG 或本地 figma-like PNG。",
       inputSchema: exportNodeParams,
       annotations: { readOnlyHint: false, openWorldHint: true }
     },
@@ -227,7 +237,8 @@ export function createServer(): McpServer {
           outputPath: params.outputPath,
           format: params.format,
           scale: params.scale,
-          background: params.background
+          background: params.background,
+          pngRenderer: params.pngRenderer
         })
       )
   )

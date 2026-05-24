@@ -61,6 +61,7 @@ export type FigNode = {
   transform?: FigmaMatrix
   strokeWeight?: number
   strokeAlign?: "CENTER" | "INSIDE" | "OUTSIDE"
+  dashPattern?: number[]
   arcData?: FigArcData
   fillPaints?: FigPaint[]
   strokePaints?: FigPaint[]

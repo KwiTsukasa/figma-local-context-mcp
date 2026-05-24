@@ -13,7 +13,7 @@
 - `get_design_tokens`：从全文件或指定节点子树中推导颜色、渐变、阴影、描边 token。
 - `inspect_fig_file`：读取本地 `.fig`，返回节点数量、类型统计和节点概览。
 - `get_fig_node`：按节点名、`1234:5678`、`1234-5678`、`node-id=1234-5678` 或完整 Figma 链接查找节点，并返回简化上下文。
-- `export_fig_node`：把指定节点导出为 SVG 或 PNG，PNG 支持倍率。
+- `export_fig_node`：把指定节点导出为 SVG 或 PNG，PNG 支持倍率，默认走本地 `figma-like` 渲染。它会在本 MCP 生成的 SVG 上对部分滤镜/内阴影做补偿后再用 `@resvg/resvg-js` 栅格化，目标是接近 Figma 在线端 PNG，但不等同于 Figma 原生 PNG 导出。
 
 ## 示例参数
 
@@ -97,9 +97,23 @@
   "nodeQuery": "1234-5678",
   "outputPath": "C:\\Users\\you\\Exports\\figma-local-context\\sample-node.png",
   "format": "png",
-  "scale": 2
+  "scale": 2,
+  "pngRenderer": "figma-like"
 }
 ```
+
+导出结果中的 `renderer` 字段会标明导出管线：
+
+- `local-svg`：直接写出本地解码生成的 SVG。
+- `local-figma-like-resvg`：默认 PNG 管线。先生成带 Figma-like 滤镜补偿的本地 SVG，再用 `@resvg/resvg-js` 转 PNG。
+- `local-svg-resvg`：普通预览 PNG 管线。先生成本地 SVG，再用 `@resvg/resvg-js` 转 PNG。Figma 在线端 PNG 使用自身渲染管线，不能假定它是在线 SVG 再转 PNG。
+
+导出结果还会包含 `exportCapabilities`：
+
+- `localSvg.supported: true`：支持从本地 `.fig` 解码生成 SVG。
+- `localPng.supported: true`：支持把本地 SVG 栅格化成预览 PNG。
+- `figmaLikePng.supported: true`：支持本地 Figma-like PNG 近似渲染，会对 Figma 原生 PNG 中更强的内阴影/透明边缘做补偿。
+- `figmaNativePng.supported: false`：纯本地 `.fig` 解码无法调用 Figma 原生 PNG 渲染器；如果需要与 Figma 在线 PNG 像素级一致，需要接入 Figma 官方运行时/API/桌面端导出能力。
 
 ## 开发
 
