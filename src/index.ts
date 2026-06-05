@@ -10,3 +10,4 @@ export {
   getDesignTokens,
   listFigNodes
 } from "./services/design-context.js"
+export { getMakeContext } from "./services/fig-make.js"

@@ -35,11 +35,11 @@ export function figToJson(fileBuffer: Uint8Array | ArrayBuffer): FigJson {
 function figToBinaryParts(fileBuffer: Uint8Array | ArrayBuffer): FigmaBinaryParts {
   let fileByte: Uint8Array<ArrayBufferLike> = fileBuffer instanceof Uint8Array ? fileBuffer : new Uint8Array(fileBuffer)
 
-  if (!isKiwiFile(fileByte)) {
+  if (!isCanvasFile(fileByte)) {
     const unzipped = UZIP.parse(toArrayBuffer(fileByte))
     const canvas = unzipped["canvas.fig"]
     if (!canvas) {
-      throw new Error("未找到 canvas.fig，文件可能不是有效的 .fig")
+      throw new Error("未找到 canvas.fig，文件可能不是有效的 .fig 或 .make")
     }
     fileByte = new Uint8Array(canvas.buffer, canvas.byteOffset, canvas.byteLength)
   }
@@ -83,8 +83,11 @@ function assertFigmaParts(parts: Uint8Array[]): void {
   }
 }
 
-function isKiwiFile(bytes: Uint8Array): boolean {
-  return bytes.length >= 8 && String.fromCharCode(...bytes.slice(0, 8)) === "fig-kiwi"
+function isCanvasFile(bytes: Uint8Array): boolean {
+  if (bytes.length < 8) return false
+
+  const magic = String.fromCharCode(...bytes.slice(0, 8))
+  return magic === "fig-kiwi" || magic === "fig-make"
 }
 
 function startsWith(bytes: Uint8Array, magic: number[]): boolean {

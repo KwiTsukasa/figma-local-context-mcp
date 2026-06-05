@@ -169,6 +169,7 @@ function renderNodeSubtree(
     node.type !== "BOOLEAN_OPERATION" || !(node.fillGeometry?.length || node.strokeGeometry?.length)
   const nodeContent = [
     ...renderGeometry(context, node, node.fillGeometry, node.fillPaints, matrix),
+    renderCodeSnapshot(context, node, matrix),
     renderTextNode(context, node, matrix),
     collectFigmaLikeEllipseInnerShadowHint(context, node, matrix),
     ...renderStrokeGeometry(context, node, matrix),
@@ -608,6 +609,48 @@ function renderGeometry(
         return `<path d="${transformPathData(parsed.d, matrix)}" fill="${fill}"${fillRule}${opacity}/>`
       })
   })
+}
+
+function renderCodeSnapshot(context: RenderContext, node: FigNode, matrix: SvgMatrix): string {
+  const snapshot = node.type === "CODE_INSTANCE" ? node.codeSnapshot : undefined
+  const paints = snapshot?.paints?.filter((paint) => paint.visible !== false)
+  const size = snapshot?.layoutSize ?? snapshot?.canvasSize ?? node.size
+  if (!paints?.length || !size || size.x <= 0 || size.y <= 0) return ""
+
+  const offset = snapshot?.offset ?? { x: 0, y: 0 }
+  const bounds = {
+    minX: offset.x,
+    minY: offset.y,
+    maxX: offset.x + size.x,
+    maxY: offset.y + size.y
+  }
+  const parsed = {
+    d: createRectPath(bounds),
+    bounds
+  }
+
+  includeBounds(context, transformBounds(matrix, bounds))
+
+  // Figma Make stores rendered code components as CODE_INSTANCE.codeSnapshot
+  // image paints instead of normal fillGeometry. Treat the snapshot as a local
+  // rectangular paint source so Make prototypes export with their preview.
+  return paints
+    .map((paint) => {
+      if (paint.type === "IMAGE") {
+        return renderImageFill(context, node, parsed, paint, matrix, "")
+      }
+
+      const fill = paintToSvgFill(context, node, parsed.bounds, paint, matrix)
+      const opacity = paintOpacityAttribute("fill", paint)
+      return `<path d="${transformPathData(parsed.d, matrix)}" fill="${fill}"${opacity}/>`
+    })
+    .join("")
+}
+
+function createRectPath(bounds: Bounds): string {
+  return `M ${format(bounds.minX)} ${format(bounds.minY)} L ${format(bounds.maxX)} ${format(
+    bounds.minY
+  )} L ${format(bounds.maxX)} ${format(bounds.maxY)} L ${format(bounds.minX)} ${format(bounds.maxY)} Z`
 }
 
 function renderImageFill(

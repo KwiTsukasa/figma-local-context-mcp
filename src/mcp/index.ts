@@ -9,6 +9,7 @@ import {
   listFigNodes
 } from "../services/design-context.js"
 import { getFigNodeContext, inspectFigFile } from "../services/fig-file.js"
+import { getMakeContext } from "../services/fig-make.js"
 
 const serverInfo = {
   name: "Figma Local Context MCP",
@@ -75,6 +76,15 @@ const codeContextParams = z.object({
   depth: z.number().int().min(0).max(8).default(2).describe("返回代码提示子树的深度。")
 })
 
+const makeContextParams = z.object({
+  filePath: z.string().min(1).describe("本地 Figma Make .make、.fig 或 .fig.json 文件路径。"),
+  includeSource: z.boolean().default(false).describe("是否在结果中包含 CODE_FILE 源码内容。"),
+  sourceMaxLength: z.number().int().min(0).max(200000).default(20000).describe("每个源码文件最多返回多少字符。"),
+  fileQuery: z.string().optional().describe("按源码文件名、路径、语言或 node-id 过滤 CODE_FILE。"),
+  includeAiChat: z.boolean().default(true).describe("是否返回 ai_chat.json 的线程和消息摘要。"),
+  maxMessages: z.number().int().min(0).max(200).default(20).describe("每个 AI 线程最多返回多少条消息摘要。")
+})
+
 const exportAssetsParams = z.object({
   filePath: z.string().min(1).describe("本地 .fig 或 .fig.json 文件路径。"),
   nodeQueries: z
@@ -103,6 +113,7 @@ type ExportNodeParams = z.infer<typeof exportNodeParams>
 type ListNodesParams = z.infer<typeof listNodesParams>
 type DesignContextParams = z.infer<typeof designContextParams>
 type CodeContextParams = z.infer<typeof codeContextParams>
+type MakeContextParams = z.infer<typeof makeContextParams>
 type ExportAssetsParams = z.infer<typeof exportAssetsParams>
 type DesignTokensParams = z.infer<typeof designTokensParams>
 
@@ -162,6 +173,26 @@ export function createServer(): McpServer {
           filePath: params.filePath,
           nodeQuery: params.nodeQuery,
           depth: params.depth
+        })
+      )
+  )
+
+  server.registerTool(
+    "get_make_context",
+    {
+      title: "Get Figma Make context",
+      description: "读取 Figma Make .make 文件，返回包结构、源码文件、代码组件/实例、meta 和 AI 对话摘要。",
+      inputSchema: makeContextParams,
+      annotations: { readOnlyHint: true }
+    },
+    async (params: MakeContextParams) =>
+      jsonResponse(
+        getMakeContext(params.filePath, {
+          includeSource: params.includeSource,
+          sourceMaxLength: params.sourceMaxLength,
+          fileQuery: params.fileQuery,
+          includeAiChat: params.includeAiChat,
+          maxMessages: params.maxMessages
         })
       )
   )

@@ -39,6 +39,19 @@ export type FigPaint = {
   originalImageHeight?: number
 }
 
+export type FigNodeReference = {
+  guid: Guid
+}
+
+export type FigCodeSnapshot = {
+  state?: string
+  paints?: FigPaint[]
+  offset?: { x: number; y: number }
+  layoutSize?: { x: number; y: number }
+  canvasSize?: { x: number; y: number }
+  devicePixelRatio?: number
+}
+
 export type FigTextGlyph = {
   commandsBlob: number
   position?: { x: number; y: number }
@@ -116,6 +129,16 @@ export type FigNode = {
   fontSize?: number
   textData?: FigTextData
   derivedTextData?: FigDerivedTextData
+  sourceCode?: string
+  codeFilePath?: string
+  importedCodeFiles?: unknown[]
+  belongsToCodeLibraryId?: FigNodeReference
+  exportedFromCodeFileId?: FigNodeReference
+  codeExportName?: string
+  backingCodeComponentId?: FigNodeReference
+  codeSnapshot?: FigCodeSnapshot
+  responsiveSetSettings?: unknown
+  componentPropDefs?: unknown[]
 }
 
 export type FigJson = {

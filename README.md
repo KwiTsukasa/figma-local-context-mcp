@@ -1,17 +1,18 @@
 # Figma Local Context MCP
 
-一个本地 `.fig` 文件 MCP Server。它结合了当前项目里的 `.fig` 解码、节点 SVG/PNG 导出能力，以及 `GLips/Figma-Context-MCP` 的 MCP 工具注册方式。
+一个本地 `.fig` / Figma Make `.make` 文件 MCP Server。它结合了当前项目里的 `.fig` 解码、节点 SVG/PNG 导出能力，以及 `GLips/Figma-Context-MCP` 的 MCP 工具注册方式。
 
-这个项目不依赖 Figma REST API，也不需要 `FIGMA_API_KEY`。MCP 客户端只需要传入本机 `.fig` 或 `.fig.json` 路径即可。
+这个项目不依赖 Figma REST API，也不需要 `FIGMA_API_KEY`。MCP 客户端只需要传入本机 `.fig`、`.make` 或 `.fig.json` 路径即可。
 
 ## 工具
 
 - `get_design_context`：官方 Figma MCP 风格的主入口，返回节点树、样式、tokens 和代码提示。
 - `get_code_context`：返回更适合代码生成的布局、样式和导出资源提示。
+- `get_make_context`：读取 Figma Make `.make` 文件，返回包结构、源码文件、代码组件/实例、meta 和 AI 对话摘要。
 - `export_assets`：批量导出多个节点为 SVG 或 PNG。
 - `list_fig_nodes`：按名称、类型或 node-id 搜索节点。
 - `get_design_tokens`：从全文件或指定节点子树中推导颜色、渐变、阴影、描边 token。
-- `inspect_fig_file`：读取本地 `.fig`，返回节点数量、类型统计和节点概览。
+- `inspect_fig_file`：读取本地 `.fig` / `.make`，返回节点数量、类型统计和节点概览。
 - `get_fig_node`：按节点名、`1234:5678`、`1234-5678`、`node-id=1234-5678` 或完整 Figma 链接查找节点，并返回简化上下文。
 - `export_fig_node`：把指定节点导出为 SVG 或 PNG，PNG 支持倍率，默认走本地 `figma-like` 渲染。它会在本 MCP 生成的 SVG 上对部分滤镜/内阴影做补偿后再用 `@resvg/resvg-js` 栅格化，目标是接近 Figma 在线端 PNG，但不等同于 Figma 原生 PNG 导出。
 
@@ -36,6 +37,28 @@
   "filePath": "C:\\Users\\you\\Designs\\sample.fig",
   "nodeQuery": "1234-5678",
   "depth": 2
+}
+```
+
+获取 Figma Make 上下文和源码清单：
+
+```json
+{
+  "filePath": "C:\\Users\\you\\Designs\\prototype.make",
+  "includeSource": false,
+  "includeAiChat": true,
+  "maxMessages": 20
+}
+```
+
+按文件名读取 Make 里的源码内容：
+
+```json
+{
+  "filePath": "C:\\Users\\you\\Designs\\prototype.make",
+  "fileQuery": "App.tsx",
+  "includeSource": true,
+  "sourceMaxLength": 50000
 }
 ```
 
@@ -108,7 +131,7 @@
 - `local-figma-like-resvg`：默认 PNG 管线。先生成带 Figma-like 滤镜补偿的本地 SVG，再用 `@resvg/resvg-js` 转 PNG。
 - `local-svg-resvg`：普通预览 PNG 管线。先生成本地 SVG，再用 `@resvg/resvg-js` 转 PNG。Figma 在线端 PNG 使用自身渲染管线，不能假定它是在线 SVG 再转 PNG。
 
-当前本地 SVG/PNG 管线支持 `.fig` 外层 zip 中的 `images/<hash>` 图片资源，会把 `IMAGE` 填充按真实图片、paint transform 和矢量路径裁切导出；如果本地文件缺少对应图片资源，会明确报出缺失的 IMAGE hash。线性/径向渐变、虚线描边和部分滤镜也会转换为 SVG 近似表达。
+当前本地 SVG/PNG 管线支持 `.fig` / `.make` 外层 zip 中的 `images/<hash>` 图片资源，会把 `IMAGE` 填充按真实图片、paint transform 和矢量路径裁切导出；如果本地文件缺少对应图片资源，会明确报出缺失的 IMAGE hash。Figma Make 的 `CODE_INSTANCE.codeSnapshot` 也会作为预览图片参与导出。线性/径向渐变、虚线描边和部分滤镜也会转换为 SVG 近似表达。
 
 导出结果还会包含 `exportCapabilities`：
 
